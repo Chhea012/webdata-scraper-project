@@ -151,8 +151,8 @@ secondary_color = "#dfe6e9"
 text_color = "#ffffff"
 button_hover_color = "#a29bfe"
 highlight_color = "#ffeaa7"
-if os.path.exists("bg.png"):
-    bg_image = PhotoImage(file="bg.png")
+if os.path.exists("bg1.png"):
+    bg_image = PhotoImage(file="bg1.png")
     background_label = tk.Label(window, image=bg_image)
     background_label.place(relwidth=1, relheight=1)
 else:
