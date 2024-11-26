@@ -1,12 +1,11 @@
 import tkinter as tk
-from tkinter import messagebox, PhotoImage, simpledialog
+from tkinter import messagebox, PhotoImage, filedialog
 from urllib.parse import urljoin, urlparse
-import requests
 from bs4 import BeautifulSoup
 import json
-import time
 import os
-import shutil
+import requests
+
 def fetch_webpage(url):
     try:
         response = requests.get(url)
@@ -15,45 +14,44 @@ def fetch_webpage(url):
     except requests.exceptions.RequestException as e:
         print("Error fetching " + url + ": " + str(e))
         return None
-# =====================================================================
+# ==================================================================================
 def extract_headings(soup):
     headings = []
-    # Loop through heading tags from h1 to h6
     for i in range(1, 7):
         headings_in_level = soup.find_all('h' + str(i))
         for h in headings_in_level:
             headings.append(h.text.strip())
     return headings
-# ======================================================================
+# ==================================================================================
 def extract_paragraphs(soup):
     paragraphs = []
     for p in soup.find_all('p'):
         paragraphs.append(p.text.strip())
     return paragraphs
-# =======================================================================
+# =================================================================================
 def extract_lists(soup):
     list_items = []
     for ul in soup.find_all('ul'):
         for li in ul.find_all('li'):
             list_items.append(li.text.strip())
     return list_items
-# ======================================================================
+# ===================================================================================
 def extract_links(soup):
     links = []
     for a in soup.find_all('a'):
         href = a.get('href')
-        if href:  # Check if href exists
+        if href:
             links.append(href)
     return links
-# ======================================================================
+# ======================================================================================
 def extract_images(soup):
     image_sources = []
     for img in soup.find_all('img'):
         src = img.get('src')
-        if src:  # Check if src exists
+        if src:
             image_sources.append(src)
     return image_sources
-# =========================================================================
+# ====================================================================================
 def extract_content(soup):
     return {
         "Headings": extract_headings(soup),
@@ -62,13 +60,27 @@ def extract_content(soup):
         "Links": extract_links(soup),
         "Images": extract_images(soup),
     }
-# =======================================================================
-def filedailon(filepath):
-    """Check if a file exists before attempting to overwrite or access it."""
+# ===========================================================================
+def file_exists(filepath):
     return os.path.exists(filepath)
-# ========================================================================
+def write_json_file(data, file_path):
+    try:
+        with open(file_path, 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+        print("Data successfully written to " + file_path)
+    except IOError as e:
+        print("Error writing to file " + file_path + ": " + str(e))
+# ==============================================================================
+def merge_json_data(existing_data, new_data, page_name):
+    if page_name in existing_data:
+        print("Data for " + page_name + " already exists. Updating existing data...")
+        existing_data[page_name].update(new_data[page_name])
+    else:
+        print("Adding new data for " + page_name + "...")
+        existing_data.update(new_data)
+    return existing_data
+# ========================================================================================
 def save_data(data, url, destination_folder):
-    """Save the extracted data to JSON files in the specified destination folder."""
     if not os.path.exists(destination_folder):
         os.makedirs(destination_folder)
     parsed_url = urlparse(url)
@@ -77,159 +89,104 @@ def save_data(data, url, destination_folder):
     json_file_name = netloc + ".json"
     json_path = os.path.join(destination_folder, json_file_name)
     structured_data = {page_name: data}
-    # Debugging print to ensure correct saving process
     print("Saving data for " + url + " to " + json_path)
-  # Debugging line
-    print("Extracted Data:", structured_data)  # Debugging line
-    if filedailon(json_path):  # Check if the file exists
+    if os.path.exists(json_path):
         try:
             with open(json_path, 'r') as json_file:
-                existing_data = json.load(json_file)  # Load existing data
-                print("Existing data loaded from " + json_path)
-            # Merge the new data with the existing data, appending the new page
-            if page_name in existing_data:
-                print("Data for " + page_name + " already exists, updating...")
-                existing_data[page_name].update(structured_data[page_name])  # Update if data already exists
-            else:
-                print("Adding new data for " + page_name + "...")
-                existing_data.update(structured_data)  # Add the new page data
-                with open(json_path, 'w') as json_file:
-                    json.dump(existing_data, json_file, indent=4)  # Save the updated data back to the file
-            print("Updated data saved to " + json_path)
+                existing_data = json.load(json_file)
+            merged_data = merge_json_data(existing_data, structured_data, page_name)
+            write_json_file(merged_data, json_path)
         except json.JSONDecodeError as e:
-            print("Error loading existing data: " + str(e))
-  # Error handling if existing data can't be loaded
-            # If the file is empty or corrupted, save the structured data directly
-            with open(json_path, 'w') as json_file:
-                json.dump(structured_data, json_file, indent=4)
-            print("Saved new data to " + json_path + " due to load error.")
+            print("Error loading existing data: " + str(e) + ". Overwriting file with new data...")
+            write_json_file(structured_data, json_path)
     else:
-        # If the JSON file does not exist, create it and save the structured data
-        with open(json_path, 'w') as json_file:
-            json.dump(structured_data, json_file, indent=4)
-        print("Created new file and saved data to " + json_path)
- # Debugging line
-# =====================================================================
-def move_file(file_path, target_dir):
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
-    try:
-        shutil.move(file_path, target_dir)
-        print("Moved " + file_path + " to " + target_dir)
-    except Exception as e:
-        print("Error moving file " + file_path + ": " + str(e))
-# =====================================================================
+        write_json_file(structured_data, json_path)
+# ======================================================================================
 def scrape_page(url, destination_folder, visited):
-    """Scrape a single page, save its data, and return its links."""
-    if url in visited:  # Skip already visited URLs
+    if url in visited:
         return []
     print("Scraping " + url + "...")
     html_content = fetch_webpage(url)
-    if html_content is None:
+    if not html_content:
         return []
     soup = BeautifulSoup(html_content, 'html.parser')
     data = extract_content(soup)
-    # Save data to a unique file
     save_data(data, url, destination_folder)
-    visited.add(url)  # Mark the URL as visited
-    return extract_links(soup)  # Return all links on the page
+    visited.add(url)
+    return extract_links(soup)
+# =================================================================================================
 def scrape_website_recursive(start_url, destination_folder, visited, max_depth=2, current_depth=0):
-    """Recursively scrape all pages starting from the given URL."""
     if current_depth > max_depth:
         return
     print("Scraping depth " + str(current_depth) + ": " + start_url)
-    # Scrape the current page
     links = scrape_page(start_url, destination_folder, visited)
-    # Resolve and recursively scrape all links on the current page
     for link in links:
-        full_url = urljoin(start_url, link)  # Resolve relative links
+        full_url = urljoin(start_url, link)
         parsed_url = urlparse(full_url)
-        if parsed_url.netloc:  # Only scrape valid links
+        if parsed_url.netloc:
             scrape_website_recursive(full_url, destination_folder, visited, max_depth, current_depth + 1)
+# =====================================================================================================
 def start_scraping():
-    """GUI function to start scraping."""
     url_input = url_text.get("1.0", "end").strip()
-    destination_input = destination_entry.get().strip()
-
     if not url_input:
         messagebox.showwarning("Input Error", "Please enter at least one URL!")
         return
-    if not destination_input:
-        messagebox.showwarning("Input Error", "Please enter at least one destination folder!")
-        return
-    # Get URLs and destination folders
     urls = [url.strip() for url in url_input.split(",")]
-    destinations = [folder.strip() for folder in destination_input.split(",")]
-    # Map each URL to a destination folder
-    url_folder_mapping = {}
-    for idx, url in enumerate(urls):
-        folder_choice = simpledialog.askstring(
-            "Choose Folder",
-           "Select folder for URL " + url + ":\n" + ', '.join(destinations),
-            parent=window
-        )
-        if folder_choice and folder_choice.strip() in destinations:
-            url_folder_mapping[url] = folder_choice.strip()
-        else:
-            messagebox.showwarning("Invalid Folder", "Invalid folder choice. Using default folder.")
-            url_folder_mapping[url] = destinations[0]  # Default to first folder
-    # Start recursive scraping
     visited = set()
-    for url, folder in url_folder_mapping.items():
-        scrape_website_recursive(url, folder, visited, max_depth=3)  # Adjust max_depth as needed
-    messagebox.showinfo("Scraping Complete", "Scraped all URLs successfully!")
-# ====================================================================================================
-# GUI setup
-# GUI setup
+    for url in urls:
+        destination_folder = filedialog.askdirectory(title="Select a folder for " + url)
+        if not destination_folder:
+            messagebox.showwarning("Folder Error", "Please select a destination folder for " + url + "!")
+            return
+        scrape_website_recursive(url, destination_folder, visited, max_depth=3)
+    messagebox.showinfo("Scraping Complete", "Scraping completed successfully! All data has been saved.")
+# ==================================================================================================
+# UI Enhancements
+
 window = tk.Tk()
-window.title("Web Scraper Tool")
-window.geometry("600x500")
-# Custom fonts and colors
-primary_color = "#4CAF50"  # Green
-secondary_color = "#f0f0f0"  # Light Gray
-text_color = "#ffffff"  # White
-button_hover_color = "#45A049"  # Darker green for button hover
-# Add a styled background
+window.title("🕸 Web Scraper Tool")
+window.geometry("650x500")
+# window.resizable(False, False)
+primary_color = "#6c5ce7"
+secondary_color = "#dfe6e9"
+text_color = "#ffffff"
+button_hover_color = "#a29bfe"
+highlight_color = "#ffeaa7"
 if os.path.exists("bg.png"):
     bg_image = PhotoImage(file="bg.png")
     background_label = tk.Label(window, image=bg_image)
     background_label.place(relwidth=1, relheight=1)
 else:
     window.configure(bg=secondary_color)
-# Frame for the content
-frame = tk.Frame(window, bg="#ffffff", bd=5, relief="groove")
-frame.place(relx=0.5, rely=0.5, anchor="center", width=500, height=400)
-# Title label with a larger font
+# Main content frame
+frame = tk.Frame(window, bg="#ffffff", bd=10, relief="solid", padx=20, pady=20)
+frame.place(relx=0.5, rely=0.5, anchor="center", width=550, height=400)
+# Title label
 title_label = tk.Label(
     frame,
     text="🕸 Web Scraper Tool",
-    font=("Helvetica", 20, "bold"),
+    font=("Helvetica", 24, "bold"),
     bg=primary_color,
     fg=text_color,
-    pady=10
+    pady=10,
+    relief="flat"
 )
-title_label.pack(fill="x")
-# Spacing between sections
+title_label.pack(fill="x", pady=10)
+
 def add_spacer(height):
     tk.Label(frame, bg="#ffffff", height=height).pack()
-# Add input for URLs
+
+# URL input area
 add_spacer(1)
 tk.Label(
     frame, text="Enter URLs (comma-separated):", font=("Helvetica", 12), bg="#ffffff", fg="#333333"
 ).pack(anchor="w", padx=20)
-url_text = tk.Text(frame, height=5, width=50, font=("Helvetica", 11))
+url_text = tk.Text(frame, height=5, width=50, font=("Helvetica", 11), bd=1, relief="solid", wrap="word")
 url_text.pack(padx=20, pady=5)
-# Add input for destination folders
 add_spacer(1)
-tk.Label(
-    frame, text="Destination Folders (comma-separated):", font=("Helvetica", 12), bg="#ffffff", fg="#333333"
-).pack(anchor="w", padx=20)
-destination_entry = tk.Entry(frame, width=50, font=("Helvetica", 11))
-destination_entry.pack(padx=20, pady=5)
-# Add a styled button with hover effect
-def on_enter(e):
+def on_button_hover(e):
     scrape_button["bg"] = button_hover_color
-def on_leave(e):
+def on_button_leave(e):
     scrape_button["bg"] = primary_color
 scrape_button = tk.Button(
     frame,
@@ -238,20 +195,24 @@ scrape_button = tk.Button(
     fg=text_color,
     font=("Helvetica", 14, "bold"),
     padx=20,
-    pady=5,
-    relief="raised",
-    command=start_scraping
+    pady=10,
+    relief="flat",
+    command=start_scraping,
+    bd=0,
+    highlightthickness=0,
+    activebackground=button_hover_color
 )
 scrape_button.pack(pady=20)
-scrape_button.bind("<Enter>", on_enter)
-scrape_button.bind("<Leave>", on_leave)
-
-# Add a footer
+scrape_button.bind("<Enter>", on_button_hover)
+scrape_button.bind("<Leave>", on_button_leave)
+# Footer
 footer_label = tk.Label(
     window,
-    text="Powered by Web Scraper| G21",
+    text="Powered by Web Scraper | G21",
     font=("Helvetica", 10),
     bg=secondary_color,
-    fg="#555555")
+    fg="#555555"
+)
 footer_label.pack(side="bottom", pady=10)
 window.mainloop()
+
