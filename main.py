@@ -142,10 +142,9 @@ def start_scraping():
     messagebox.showinfo("Scraping Complete", "Scraping completed successfully! All data has been saved.")
 # ==================================================================================================
 # UI Enhancements
-
 window = tk.Tk()
 window.title("🕸 Web Scraper Tool")
-window.geometry("650x500")
+window.geometry("950x600")
 # window.resizable(False, False)
 primary_color = "#6c5ce7"
 secondary_color = "#dfe6e9"
@@ -172,10 +171,8 @@ title_label = tk.Label(
     relief="flat"
 )
 title_label.pack(fill="x", pady=10)
-
 def add_spacer(height):
     tk.Label(frame, bg="#ffffff", height=height).pack()
-
 # URL input area
 add_spacer(1)
 tk.Label(
